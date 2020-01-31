@@ -6,7 +6,7 @@
 # 
 # The mass function will be a figure in the paper.
 
-# In[1]:
+# In[2]:
 
 
 import pandas as pd
@@ -17,34 +17,59 @@ get_ipython().run_line_magic('matplotlib', 'inline')
 from useful_functions.plotter import plot, loglogplot
 from scipy.optimize import curve_fit
 from sklearn.linear_model import LinearRegression
-
-
-# In[2]:
-
-
-data_dir = '../data/'
-fig_dir  = '../figs/'
+from scipy import integrate
+from pathlib import Path
+from os.path import expanduser
 
 
 # In[3]:
 
 
-data = np.load(data_dir+'clusterList.npy')#pd.read_csv('SGclusterList.csv')
+data_dir = Path('../data/')
+fig_dir  = Path('../figs/')
 
 
 # In[4]:
 
 
+#data = np.load(data_dir / 'clusterList.npy')#pd.read_csv('SGclusterList.csv')
+home_dir = Path(expanduser('~'))
+chandra_dir = home_dir / 'magneticum_chandra'
+data = np.load(chandra_dir / 'clusterList.npy')
+master_data = np.load(chandra_dir / 'masterList.npy')
+# there are presumably more clusters in this list since we can see more that make the mass cutoff?
+# need to ask Michelle
+
+
+# In[5]:
+
+
+#no scatter
+h=0.704 #from Magneticum data
+r500_kpc_phys = (data['r500_kpch'] / h) / (1. + data['redshift']) #was originally comoving kpc/h, so divide by h*(1+z)
+for_lorenzo = np.column_stack((data['id'],r500_kpc_phys, data['R500_pixel'], data['redshift']))
+np.savetxt('chandra_cluster_data.dat',for_lorenzo,fmt=['%d','%f','%f','%f'])
+
+
+# In[27]:
+
+
 data.dtype.names
 
 
-# In[7]:
+# In[28]:
 
 
-excised_lx = np.loadtxt(data_dir+'excised_lx.txt')
+plt.hist(data['r500_kpch'] / (1. + data['redshift']))
 
 
-# In[8]:
+# In[6]:
+
+
+excised_lx = np.loadtxt(data_dir / 'excised_lx.txt')
+
+
+# In[17]:
 
 
 fig, ax = plot()
@@ -53,7 +78,20 @@ plt.xlabel('redshift'); plt.ylabel('count')
 #plt.savefig(fig_dir+'redshift_dist.pdf',bbox_inches='tight')
 
 
-# In[9]:
+# In[18]:
+
+
+len(np.unique(data['uid']))
+#984 originally, 1344 in chandra clusterList
+
+
+# In[29]:
+
+
+np.unique(data['redshift'])
+
+
+# In[30]:
 
 
 #binseq = np.logspace(13.5,15,16)
@@ -65,26 +103,26 @@ for j in range(0,len(bincenters)):
     binsize[j] = binseq[j+1] - binseq[j]
 
 
-# In[10]:
+# In[31]:
 
 
 masses = data['M500_msolh']
 len(masses)
 
 
-# In[11]:
+# In[32]:
 
 
 binseq
 
 
-# In[12]:
+# In[33]:
 
 
 np.min(np.log10(data["M500_msolh"])) #cutoff at 13.5, largest at 14.7
 
 
-# In[13]:
+# In[34]:
 
 
 massFunc = np.zeros(bin_count) #i.e. number per bin
@@ -92,40 +130,65 @@ for i in range(0,len(massFunc)):
     massFunc[i] = len(masses[np.logical_and(masses >= binseq[i], masses < binseq[i+1])])
 
 
-# In[14]:
+# In[35]:
 
 
 massFunc
 
 
-# In[15]:
+# In[36]:
 
 
 np.sum(massFunc)
 
 
-# In[16]:
+# In[37]:
 
 
 bins_to_use = np.log10(binseq)
 
 
-# In[17]:
+# In[38]:
 
 
 fig, ax = plot()
 n, bins, patches = plt.hist(np.log10(masses),histtype='step',linewidth=1.2, color='k', bins = bins_to_use)#int(np.sqrt(len(masses))))
 print(n)
-plt.ylabel(r'N per 0.1 dex mass bin')
-plt.xlabel(r'$M_{500c}$ $[M_\odot h^{-1}]$')
+plt.ylabel(r'Clusters per 0.1 dex mass bin')
+plt.xlabel(r'$\log(M_\mathrm{500c})$ $[M_\odot h^{-1}]$')
 #plt.title('Magneticum mass function run Jan. 9')
-plt.savefig(fig_dir+'mass_func.pdf',bbox_inches='tight')
+plt.savefig(fig_dir / 'mass_func.pdf',bbox_inches='tight')
 #I like this look, but not sure
+
+# this mass function hasn't been flattened yet...
+# I think we'll load in both and then take the intersection when we're doing analysis
 
 #Should we eventually plot this as dN/dlnM instead, or is this as a histogram okay?
 
 
-# In[18]:
+# In[39]:
+
+
+box0_data = pd.read_table(data_dir+'box0/cat_box0_33.dat', sep='\s+').fillna(0)
+box0_data['redshift'] = 0.137
+box0_data_2 = pd.read_table(data_dir+'box0/cat_box0_029.dat', sep='\s+').fillna(0)
+box0_data_2['redshift'] = 0.293
+box0_data_2.index = range(len(box0_data),len(box0_data)+len(box0_data_2))
+box0_data_3 = pd.read_table(data_dir+'box0/cat_box0_025.dat', sep='\s+').fillna(0)
+box0_data_3['redshift'] = 0.470
+box0_data_3.index = range(len(box0_data)+len(box0_data_2),len(box0_data)+len(box0_data_2)+len(box0_data_3))
+box0_data = pd.concat([box0_data,box0_data_2,box0_data_3])
+print(box0_data.columns)
+
+
+# In[93]:
+
+
+#let's say that we want 
+np.log10(np.min(box0_data['m500c[Msol]'])*0.7)
+
+
+# In[17]:
 
 
 fig, ax = loglogplot()
@@ -142,16 +205,53 @@ plt.ylabel('Original Lx')
 # In[19]:
 
 
+#from Magneticum data
+omega_l = 0.728
+omega_m = 0.272
+h=0.704
+
+def E(z):
+    return np.sqrt((1+z)**3 * omega_m + omega_l)
+
+#let's figure out what the pixel sizes should be and compare them to Michelle's
+
+c = 9.71561e-12 #kpc/s
+H0 = h * 3.24077929e-18 # Hz
+dH = c / H0 # in kpc
+
+dC = np.zeros(len(data))
+for i in range(0,len(dC)):
+    dC[i] = dH * integrate.quad(lambda z: 1. / E(z), 0, data['redshift'][i])[0]
+    
+#assumes flat cosmology such that comoving distance = transverse comoving distance
+
+dA = dC / (1. + data['redshift'])
+phys_rad_kpc =  (data['r500_kpch'] / h) / (1. + data['redshift'])
+
+thetas = np.arctan(phys_rad_kpc / dA) #in radians
+theta_deg = thetas * (360. / (2.*np.pi)) #in degrees
+rad_pix = theta_deg * (384. / 1.03) # now in pixels
+
+fig,ax = plot()
+plt.plot(data['R500_pixel'], rad_pix, '.');
+plt.xlabel('Michelle calc')
+plt.ylabel('Sheridan calc')
+
+fig,ax = plot()
+plt.hist(data['R500_pixel'] / rad_pix);
+plt.xlabel('Michelle calc / Sheridan calc');
+
+fig,ax = plot()
+plt.hist(theta_deg / data['R500_deg']);
+
+
+# In[25]:
+
+
 #let's verify the redshift scaling
 #first do a scatter plot of mass vs. luminosity unscaled
 
 #no core excise, no redshift scale
-
-omega_l = 0.728
-omega_m = 0.272
-
-def E(z):
-    return np.sqrt((1+z)**3 * omega_m + omega_l)
 
 def linear_fit(x, *p):
     return 10**(np.log10(p[0])+(p[1])*(np.log10(x)))
@@ -162,7 +262,7 @@ def log_linear_fit(x, *p):
 def scatter(M1,M2):
     #calculates the residuals and takes the std dev of them to return the scatter in fractional form
     #return np.std(np.log(M1/M2))
-    return (np.percentile(np.log(M1/M2),84) - np.percentile(np.log(M1/M2),16)) / 2.
+    return (np.percentile(np.log10(M1/M2),84) - np.percentile(np.log10(M1/M2),16)) / 2.
 
 def M500c_from_Lx(Lx,z,h): #what units for Lx?
     #p1 = (h/0.72)**((5*B_YM/2)-1) * C_YM * E(z)**(a_YM) * (Lx / (C_LY * E(z)**a_LY))**(B_YM / B_LY)
@@ -184,7 +284,7 @@ print(popt_log)
 model_fit = 10**log_linear_fit(np.log10(mass), *popt_log)
 #not sure why the curve fit doesn't work the other way...
 
-residuals = np.log(Lx / model_fit)
+residuals = np.log10(Lx / model_fit)
 scatter = np.std(residuals)
 print(scatter)
 
@@ -194,7 +294,7 @@ mass_scatter = np.std(mass_res)
 print("mass scatter",mass_scatter) #11.4%, not bad
 
 #should both be lined up
-plt.plot(mass, Lx, '.', rasterized=True)
+plt.scatter(mass, Lx, c = data['redshift'], rasterized=True)
 plt.plot(mass, model_fit)
 plt.xlabel('$M_{500c}$ $[M_\odot h^{-1}]$')
 plt.ylabel(r'$L_x$')
@@ -203,14 +303,75 @@ plt.text(3e13,3e1,' $M_{500c}$ Scatter: %.2f'%mass_scatter)
 #plt.savefig('m_Lx_no_scale_no_ex.pdf',bbox_inches='tight')
 
 
-# In[20]:
+# In[24]:
+
+
+fig, ax = loglogplot()
+mass = data['M500_msolh']
+scaled_Lx = data['Lx_ergs']*E(data['redshift'])**(-7./3.)
+
+reg = LinearRegression().fit(np.log10(mass).reshape(-1, 1), np.log10(scaled_Lx))
+print(reg.coef_, reg.intercept_)
+popt_log = [reg.intercept_, reg.coef_]
+print(popt_log)
+model_fit = 10**log_linear_fit(np.log10(mass), *popt_log)
+#not sure why the curve fit doesn't work the other way...
+
+residuals = np.log10(scaled_Lx / model_fit)
+scatter = np.std(residuals)
+print(scatter)
+
+mass_preds = (10**(-1.*reg.intercept_) * scaled_Lx)**(1./reg.coef_)
+mass_res = np.log10(mass_preds) - np.log10(mass)
+mass_scatter = np.std(mass_res)
+print("mass scatter",mass_scatter) #11.4%, not bad
+
+#should both be lined up
+sc = plt.scatter(mass, scaled_Lx, c = data['redshift'], cmap=plt.get_cmap('jet'), rasterized=True)
+cbar = plt.colorbar(sc)
+cbar.set_label(r'$z$')
+plt.plot(mass, model_fit)
+plt.xlabel('$M_{500c}$ $[M_\odot h^{-1}]$')
+plt.ylabel(r'$E(z)^{-7/3} L_x$')
+plt.text(3e13,6e1,' $L_x$ Scatter: %.2f'%scatter)
+plt.text(3e13,3e1,' $M_{500c}$ Scatter: %.2f'%mass_scatter)
+#plt.savefig('m_Lx_no_scale_no_ex.pdf',bbox_inches='tight')
+
+
+# In[25]:
+
+
+reg = LinearRegression().fit(np.log10(mass).reshape(-1, 1), np.log10(Lx) / E(data['redshift'])**(7./6.))
+print(reg.coef_, reg.intercept_)
+
+
+# In[33]:
+
+
+def L_from_T_maughan(T, z):
+    C=6.6
+    alpha=1.
+    B=2.8
+    Xstar = 6. #keV
+    return C*E(z)**alpha * (T / Xstar)**B
+
+fig,ax = loglogplot()
+plt.plot(data['T_kev'], data['Lx_ergs'], '.', label='Magneticum Full $L_X$', alpha=0.5)
+plt.plot(data['T_kev'], excised_lx[:,1], '.', label='Magneticum Excised $L_X$', alpha=0.5)
+plt.plot(data['T_kev'], L_from_T_maughan(data['T_kev'], data['redshift']), '.', label='Maughan et al. 2007') 
+plt.xlabel(r'$T$ [keV]')
+plt.ylabel(r'$L_{X,44}$ [erg/s]')
+plt.legend();
+
+
+# In[23]:
 
 
 #core excised, no redshift scale
 
 fig, ax = loglogplot()
 mass = data['M500_msolh']
-Lx = excised_lx[:,1] #data['Lx_ergs']
+Lx = excised_lx[:,1]*E(data['redshift'])**(-7./3.) #data['Lx_ergs']
 
 #do the fit
 #not sure why the curve fit doesn't work the other way...
@@ -226,7 +387,7 @@ model_fit = 10**log_linear_fit(np.log10(mass), *popt_log)
 #scatter is slightly reduced, but not amazingly so
 
 
-residuals = np.log(Lx / model_fit)
+residuals = np.log10(Lx / model_fit)
 scatter = np.std(residuals)
 print(scatter)
 
@@ -368,4 +529,45 @@ h=0.704 #from Magneticum data
 r500_kpc_phys = (data['r500_kpch'] / h) / (1. + data['redshift']) #was originally comoving kpc/h, so divide by h*(1+z)
 for_lorenzo = np.column_stack((data['id'],r500_kpc_phys, data['R500_pixel'], data['redshift']))
 np.savetxt('cluster_data.dat',for_lorenzo,fmt=['%d','%f','%f','%f'])
+
+
+# In[43]:
+
+
+# let's quantify the evolution in the mass-luminosity and the morphological parameters
+# we'll start with looking just at the luminosities here, then port the code over to the morph param analysis
+
+scaled_luminosities = np.zeros(len(data))
+# this will contain the ratio of the luminosity relative to the cluster at it's earliest snapshot
+
+uids = np.unique(data['uid'])
+
+for i in range(0,len(data)):
+    same_clusters = data[data['uid'] == data['uid'][i]] #extract all clusters with same uid
+    #get the earliest forming cluster index in same_clusters
+    earliest_cluster_redshift = same_clusters[np.argmax(same_clusters['redshift'])]['redshift']
+    earliest_cluster_lum = same_clusters[np.argmax(same_clusters['redshift'])]['Lx_ergs']
+    
+    cluster_redshift = data['redshift'][i]
+    cluster_lum = data['Lx_ergs'][i]
+    
+    scaled_luminosities[i] = cluster_lum / earliest_cluster_lum * (E(earliest_cluster_redshift) / E(cluster_redshift))**(1.)
+
+
+# In[44]:
+
+
+plt.hist(np.log10(scaled_luminosities[scaled_luminosities != 1]))
+
+
+# In[35]:
+
+
+data.dtype.names
+
+
+# In[ ]:
+
+
+
 

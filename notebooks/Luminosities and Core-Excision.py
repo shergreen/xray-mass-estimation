@@ -3,7 +3,7 @@
 
 # ## Generates a file called excised_lx.txt which contains the 15% R_500 core-excised luminosities of Box2, computed using the no-background images
 
-# In[4]:
+# In[47]:
 
 
 import numpy as np
@@ -11,6 +11,9 @@ import matplotlib.pyplot as plt
 get_ipython().run_line_magic('matplotlib', 'inline')
 import pandas as pd
 from astropy.io import fits
+from pathlib import Path
+from os.path import expanduser
+from useful_functions.plotter import plot, loglogplot
 
 
 # In this notebook, we're going to recompute the luminosities from the xspec code that Lorenzo sent us, then write functions for core-excision. The output of this notebook will be the following:
@@ -53,7 +56,7 @@ from astropy.io import fits
 # 
 # **Pending: Michelle send these two pieces of information (2000 seconds), Michelle sends no-background images, Michelle/Lorenzo suggest what temperature to use, Klaus responds with necessary data files**
 
-# In[5]:
+# In[2]:
 
 
 #in the mean time, we can write our functions to perform the core-excision
@@ -62,29 +65,34 @@ from astropy.io import fits
 #then we count up all within the radii
 #we cound up the amount within 15% of the radii
 #simple math
-data_dir = '../data/'
+data_dir = Path('../data')
+home_dir = Path(expanduser('~'))
 
-cluster_directory = '/home/sbg/magneticum_no_bg/' 
+fig_dir = Path('../figs/')
+chandra_dir = home_dir / 'magneticum_chandra'
+erosita_no_bg_dir = home_dir / 'magneticum_no_bg'
+
+cluster_directory = chandra_dir
 
 
-# In[6]:
+# In[3]:
 
 
-magneticum_data = np.load('/home/sbg/magneticum_no_bg/clusterList.npy')
+magneticum_data = np.load(cluster_directory / 'clusterList.npy')
 # make this into a pandas data frame
 magneticum_data = pd.DataFrame(data=magneticum_data, columns=magneticum_data.dtype.names)
 magneticum_data = magneticum_data.set_index('id')
 Nclusters = len(magneticum_data.index)
 
 
-# In[7]:
+# In[4]:
 
 
 def distance(x1, x2):
     return np.sqrt((x1[0] - x2[0])**2 + (x1[1] - x2[1])**2)
 
 
-# In[8]:
+# In[7]:
 
 
 #make an array that is 384 x 384, and each element contains the 4 corners in the cell
@@ -92,21 +100,21 @@ def distance(x1, x2):
 #so we say that we are within the radius if part of the pixel is within the radius,
 #not if its center is within radius
 #TODO: we should see how much things differ when we do this...
-img_shape_x, img_shape_y = fits.open(cluster_directory+'922603.fits')[0].data.shape
+img_shape_x, img_shape_y = fits.open(cluster_directory / '922603.fits')[0].data.shape
 center = np.array([img_shape_x, img_shape_y]) / 2.
 cell_dists = np.ndarray((img_shape_x, img_shape_y))
 for i in range(0, img_shape_x):
     for j in range(0, img_shape_y):
-        #cell_dists[i,j] = distance(center, [i,j])
+#        #cell_dists[i,j] = distance(center, [i,j])
         cell_dists[i,j] = np.min([distance(center,[i,j]), distance(center,[i+1,j]), 
                                   distance(center,[i,j+1]), distance(center,[i+1,j+1])])
 
 
-# In[9]:
+# In[8]:
 
 
 def core_excised_Lx(cluster_id, excise_rad_frac):
-    dat = fits.open(cluster_directory+'%d.fits' % cluster_id)[0].data
+    dat = fits.open(cluster_directory / ('%d.fits' % cluster_id))[0].data
     r500 = magneticum_data['R500_pixel'].loc[cluster_id]
     total_mask = (cell_dists <= r500)
     excise_mask = (cell_dists <= excise_rad_frac * r500)
@@ -116,7 +124,7 @@ def core_excised_Lx(cluster_id, excise_rad_frac):
     return (Ntot-Ncore)/Ntot * magneticum_data['Lx_ergs'].loc[cluster_id]
 
 def core_excised_counts(cluster_id, excise_rad_frac):
-    dat = fits.open(cluster_directory+'%d.fits' % cluster_id)[0].data
+    dat = fits.open(cluster_directory / ('%d.fits' % cluster_id))[0].data
     r500 = magneticum_data['R500_pixel'].loc[cluster_id]
     total_mask = (cell_dists <= r500)
     excise_mask = (cell_dists <= excise_rad_frac * r500)
@@ -125,22 +133,25 @@ def core_excised_counts(cluster_id, excise_rad_frac):
     return(Ntot-Ncore)
 
 
-# In[10]:
+# In[9]:
 
 
 excised_counts = np.zeros(Nclusters)
 for i,cluster_id in enumerate(magneticum_data.index.values):
+    print(i)
     excised_counts[i] = core_excised_counts(cluster_id, 0.15)
 
 
-# In[11]:
+# In[10]:
 
 
 plt.hist(np.log10(excised_counts))
 plt.xlabel(r'$\log N_{ex}$')
 
+# much higher for the Chandra data, wonder what is going on down at the low end...
 
-# In[12]:
+
+# In[9]:
 
 
 #the dead center is the bottom corner of pixel 192 (counting from 0 as in python.)
@@ -148,11 +159,13 @@ plt.xlabel(r'$\log N_{ex}$')
 #if we want to 
 
 
-# In[13]:
+# In[12]:
 
 
 pix_corner_excised_Lx = np.zeros(Nclusters)
 for i,cluster_id in enumerate(magneticum_data.index.values):
+    if(i % 100 == 0):
+        print(i)
     pix_corner_excised_Lx[i] = core_excised_Lx(cluster_id, 0.15)
 
 
@@ -177,11 +190,83 @@ for i,cluster_id in enumerate(magneticum_data.index.values):
 #i'll use the center, because it seems more reasonable to me, even though it makes very little difference
 
 
-# In[16]:
+# In[13]:
 
 
 #now, we want to save a list of the excised Lx values and the respective cluster ids,
 #to be loaded into our main file
 output = np.column_stack((magneticum_data.index.values, pix_corner_excised_Lx))
-np.savetxt(data_dir+'excised_lx.txt',output,fmt='%d %e')
+np.savetxt(data_dir / 'chandra_excised_lx.txt',output,fmt='%d %e')
+
+
+# In[44]:
+
+
+# let's do a comparison between chandra and erosita core-excised
+erosita_ex_lx = np.loadtxt(data_dir / 'excised_lx.txt')
+chandra_ex_lx = np.loadtxt(data_dir / 'chandra_excised_lx.txt')
+print(erosita_ex_lx.shape)
+print(chandra_ex_lx.shape)
+
+
+# In[45]:
+
+
+msk = np.isin(chandra_ex_lx[:,0], erosita_ex_lx[:,0])
+chandra_ex_lx = chandra_ex_lx[msk]
+msk = np.isin(erosita_ex_lx[:,0], chandra_ex_lx[:,0])
+erosita_ex_lx = erosita_ex_lx[msk]
+chandra_ex_lx = chandra_ex_lx[np.argsort(erosita_ex_lx[:,0])]
+erosita_ex_lx = erosita_ex_lx[np.argsort(erosita_ex_lx[:,0])]
+print(erosita_ex_lx.shape)
+print(chandra_ex_lx.shape)
+for i in range(0, len(chandra_ex_lx)):
+    #print(i)
+    assert(chandra_ex_lx[i,0] == erosita_ex_lx[i,0])
+
+
+# In[49]:
+
+
+loglogplot()
+plt.plot(chandra_ex_lx[:,1],erosita_ex_lx[:,1],'.')
+
+rel_err = (erosita_ex_lx[:,1] - chandra_ex_lx[:,1]) / chandra_ex_lx[:,1]
+
+plot(semilogx=True)
+plt.plot(chandra_ex_lx[:,1],rel_err,'.')
+
+# this tells us that the chandra luminosities are basically always larger, and this should be no surprise
+# since we have more pixels, we can throw out less light at the boundary
+
+# however, i'm surprised at the percentage-level difference between the two
+
+
+# In[54]:
+
+
+# let's make sure the luminosities from the raw data files are the same though, just to confirm that the only effect
+# is simply due to the core excision process
+erosita_data = np.load(data_dir / 'clusterList.npy')
+chandra_data = np.load(cluster_directory / 'clusterList.npy')
+
+msk = np.isin(chandra_data['id'], erosita_data['id'])
+chandra_data = chandra_data[msk]
+msk = np.isin(erosita_data['id'], chandra_data['id'])
+erosita_data = erosita_data[msk]
+chandra_data = chandra_data[np.argsort(erosita_data['id'])]
+erosita_data = erosita_data[np.argsort(erosita_data['id'])]
+
+rel_err = (erosita_data['M500_msolh'] - chandra_data['M500_msolh']) / chandra_data['M500_msolh']
+plot(semilogx=True)
+plt.plot(chandra_data['M500_msolh'], rel_err)
+
+# this is good, they're the exact same
+# hence, the only cause for discrepancy in the values of the core-excised luminosities is the excision process
+
+
+# In[ ]:
+
+
+
 
